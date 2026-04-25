@@ -72,12 +72,14 @@ function App() {
 
     const elRect = el.getBoundingClientRect()
     const containerRect = container.getBoundingClientRect()
-    // Offset from container top to element top
     const offsetInContainer = elRect.top - containerRect.top + container.scrollTop
-    // Scroll so the element is ~20% from top of visible area
-    const targetScroll = offsetInContainer - containerRect.height * 0.2
+    // col3: align current chord to the top of the visible area
+    // others: show current chord ~20% from top
+    const targetScroll = layout === 'col3'
+      ? offsetInContainer
+      : offsetInContainer - containerRect.height * 0.2
     container.scrollTo({ top: Math.max(0, targetScroll), behavior: 'smooth' })
-  }, [playingIdx])
+  }, [playingIdx, layout])
 
   const getResult = useCallback(() => {
     if (!input.trim()) return null
