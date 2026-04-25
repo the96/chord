@@ -184,7 +184,7 @@ function App() {
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950 text-gray-900 dark:text-gray-100">
       <div className={`mx-auto px-4 py-8 transition-all ${pageExpanded ? 'max-w-full' : 'max-w-2xl'}`}>
-        <h1 className="text-3xl font-bold text-center mb-2">Chord Transposer</h1>
+        <h1 className="text-3xl font-bold text-center mb-2">ReKey</h1>
         <p className="text-center text-gray-500 dark:text-gray-400 mb-8">コード進行を指定のキーに変換</p>
 
         {/* Mode Toggle */}
