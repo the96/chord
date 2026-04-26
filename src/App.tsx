@@ -14,7 +14,7 @@ import { History } from './components/History'
 import type { HistoryEntry } from './lib/history'
 
 type InputMode = 'chord' | 'degree'
-type LayoutMode = 'wrap' | 'horizontal' | 'col3'
+type LayoutMode = 'wrap' | 'horizontal'
 
 function readParams(): { mode: InputMode; input: string; fromKey: string; toKey: string; guitar: boolean } {
   const p = new URLSearchParams(window.location.search)
@@ -54,6 +54,7 @@ function App() {
   const [bpm, setBpm] = useState(120)
   const [muted, setMuted] = useState(false)
   const [layout, setLayout] = useState<LayoutMode>('wrap')
+  const [loop, setLoop] = useState(false)
 
   // Refs for auto-scroll
   const chordRefs = useRef<(HTMLDivElement | null)[]>([])
@@ -73,13 +74,9 @@ function App() {
     const elRect = el.getBoundingClientRect()
     const containerRect = container.getBoundingClientRect()
     const offsetInContainer = elRect.top - containerRect.top + container.scrollTop
-    // col3: align current chord to the top of the visible area
-    // others: show current chord ~20% from top
-    const targetScroll = layout === 'col3'
-      ? offsetInContainer
-      : offsetInContainer - containerRect.height * 0.2
+    const targetScroll = offsetInContainer - containerRect.height * 0.2
     container.scrollTo({ top: Math.max(0, targetScroll), behavior: 'smooth' })
-  }, [playingIdx, layout])
+  }, [playingIdx])
 
   const getResult = useCallback(() => {
     if (!input.trim()) return null
@@ -117,7 +114,7 @@ function App() {
     const player = createProgressionPlayer(result.chords, bpm, (idx) => {
       setPlayingIdx(idx)
       if (idx === -1) setPlayerState('stopped')
-    }, { mute: muted })
+    }, { mute: muted, loop })
     playerRef.current = player
     player.play()
     setPlayerState('playing')
@@ -155,30 +152,18 @@ function App() {
     { label: 'I - IV - vi - V (小室進行)', value: 'VI IV V I' },
   ]
 
-  // Layout classes for the chord items container
-  const layoutContainerClass = (() => {
-    switch (layout) {
-      case 'horizontal':
-        return 'flex flex-nowrap overflow-x-auto gap-4 pb-2 items-start'
-      case 'col3':
-        return 'flex flex-col items-center gap-2'
-      default:
-        return showDiagrams
-          ? 'flex flex-wrap justify-center gap-4'
-          : 'flex flex-wrap gap-3'
-    }
-  })()
+  const layoutContainerClass = layout === 'horizontal'
+    ? 'flex flex-nowrap overflow-x-auto gap-4 pb-2 items-start'
+    : showDiagrams
+      ? 'flex flex-wrap justify-center gap-4'
+      : 'flex flex-wrap gap-3'
 
-  // col3: each chord fills width, large text
   const chordItemClass = (isPlaying: boolean) => {
-    const base = 'cursor-pointer rounded-lg transition-colors'
+    const base = 'cursor-pointer rounded-lg shrink-0 p-2 transition-colors'
     const highlight = isPlaying
       ? 'bg-indigo-100 dark:bg-indigo-900/40 ring-2 ring-indigo-400'
       : 'hover:bg-gray-50 dark:hover:bg-gray-800'
-    if (layout === 'col3') {
-      return `${base} ${highlight} w-full p-4 flex flex-col items-center justify-center`
-    }
-    return `${base} ${highlight} shrink-0 p-2`
+    return `${base} ${highlight}`
   }
 
   return (
@@ -291,6 +276,13 @@ function App() {
                   {muted ? 'Mute ON' : 'Mute'}
                 </button>
 
+                {/* Loop */}
+                <button onClick={() => setLoop(v => !v)}
+                  className={`text-xs px-2.5 py-1 rounded-md transition-colors ${loop ? 'bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300' : 'text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800'}`}
+                  title={loop ? 'ループ再生OFF' : 'ループ再生ON'}>
+                  Loop
+                </button>
+
                 {/* BPM */}
                 <div className="flex items-center gap-1.5">
                   <input type="range" min={40} max={240} step={5} value={bpm}
@@ -301,7 +293,7 @@ function App() {
 
                 {/* Layout switcher */}
                 <div className="flex rounded-md border border-gray-200 dark:border-gray-700 overflow-hidden ml-auto">
-                  {([['wrap', 'Wrap'], ['horizontal', 'Scroll'], ['col3', '3col']] as const).map(([val, label]) => (
+                  {([['wrap', 'Wrap'], ['horizontal', 'Scroll']] as const).map(([val, label]) => (
                     <button key={val} onClick={() => setLayout(val)}
                       className={`text-xs px-2 py-1 transition-colors ${layout === val ? 'bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300' : 'hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-500'}`}>
                       {label}
@@ -328,14 +320,14 @@ function App() {
                           <ChordDiagram name={chord} positions={chordData.positions} degree={result.degrees?.[i]} />
                         ) : (
                           <div className="flex flex-col items-center gap-1">
-                            <span className={`font-mono font-bold text-indigo-600 dark:text-indigo-400 ${layout === 'col3' ? 'text-4xl' : 'text-lg'}`}>{chord}</span>
+                            <span className="text-lg font-mono font-bold text-indigo-600 dark:text-indigo-400">{chord}</span>
                             {result.degrees?.[i] && <span className="text-xs text-gray-400 font-mono">{result.degrees[i]}</span>}
                           </div>
                         )
                       ) : (
                         <div className="flex flex-col items-center gap-1 px-1">
-                          <span className={`font-mono font-bold text-indigo-600 dark:text-indigo-400 ${layout === 'col3' ? 'text-5xl py-3' : 'text-2xl'}`}>{chord}</span>
-                          {result.degrees?.[i] && <span className={`text-gray-400 font-mono ${layout === 'col3' ? 'text-lg' : 'text-xs'}`}>{result.degrees[i]}</span>}
+                          <span className="text-2xl font-mono font-bold text-indigo-600 dark:text-indigo-400">{chord}</span>
+                          {result.degrees?.[i] && <span className="text-xs text-gray-400 font-mono">{result.degrees[i]}</span>}
                         </div>
                       )}
                     </div>

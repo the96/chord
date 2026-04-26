@@ -98,7 +98,7 @@ export function createProgressionPlayer(
   chordNames: string[],
   bpm: number,
   onChordStart: (index: number) => void,
-  options?: { mute?: boolean },
+  options?: { mute?: boolean; loop?: boolean },
 ): ProgressionPlayer {
   const chordDuration = (60 / bpm) * 2
   let currentIndex = 0
@@ -106,7 +106,9 @@ export function createProgressionPlayer(
   let currentState: PlayerState = 'stopped'
 
   function playAt(index: number) {
-    if (currentState !== 'playing' || index >= chordNames.length) {
+    if (currentState !== 'playing') return
+    if (index >= chordNames.length) {
+      if (options?.loop) { playAt(0); return }
       currentState = 'stopped'
       onChordStart(-1)
       return
