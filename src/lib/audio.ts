@@ -42,13 +42,19 @@ export function chordToMidi(chordName: string): number[] {
   return midis
 }
 
+/** Master volume (0–1) */
+let masterVolume = 0.5
+
+export function setVolume(v: number) { masterVolume = Math.max(0, Math.min(1, v)) }
+export function getVolume() { return masterVolume }
+
 /** Play a set of MIDI notes as a chord */
 export function playChord(midiNotes: number[], duration = 0.8): void {
   const ac = getCtx()
   const now = ac.currentTime
 
   const master = ac.createGain()
-  master.gain.setValueAtTime(0.3 / Math.max(midiNotes.length, 1), now)
+  master.gain.setValueAtTime((masterVolume * 0.6) / Math.max(midiNotes.length, 1), now)
   master.connect(ac.destination)
 
   for (const midi of midiNotes) {

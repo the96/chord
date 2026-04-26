@@ -7,7 +7,7 @@ import {
 } from './lib/chord-utils'
 import { lookupChord } from './lib/guitar-chords'
 import { ChordDiagram } from './components/ChordDiagram'
-import { playChord, chordToMidi, createProgressionPlayer } from './lib/audio'
+import { playChord, chordToMidi, createProgressionPlayer, setVolume, getVolume } from './lib/audio'
 import type { ProgressionPlayer, PlayerState } from './lib/audio'
 import { addHistory } from './lib/history'
 import { History } from './components/History'
@@ -55,6 +55,7 @@ function App() {
   const [muted, setMuted] = useState(false)
   const [layout, setLayout] = useState<LayoutMode>('wrap')
   const [loop, setLoop] = useState(false)
+  const [volume, setVolumeState] = useState(() => getVolume())
 
   // Refs for auto-scroll
   const chordRefs = useRef<(HTMLDivElement | null)[]>([])
@@ -289,6 +290,14 @@ function App() {
                     onChange={e => setBpm(Number(e.target.value))}
                     className="w-16 h-1 accent-indigo-500" />
                   <span className="text-xs font-mono text-gray-500 w-7">{bpm}</span>
+                </div>
+
+                {/* Volume */}
+                <div className="flex items-center gap-1.5">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.536 8.464a5 5 0 010 7.072M12 6l-4 4H4v4h4l4 4V6z" /></svg>
+                  <input type="range" min={0} max={100} step={5} value={Math.round(volume * 100)}
+                    onChange={e => { const v = Number(e.target.value) / 100; setVolumeState(v); setVolume(v) }}
+                    className="w-14 h-1 accent-indigo-500" />
                 </div>
 
                 {/* Layout switcher */}
