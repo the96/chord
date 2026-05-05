@@ -4,6 +4,10 @@ import {
   transposeProgression,
   romanToChords,
   chordsToRoman,
+  parseChordOcts,
+  parseRomanOcts,
+  octToMarker,
+  shiftOctInInput,
 } from './lib/chord-utils'
 import { lookupChord } from './lib/guitar-chords'
 import { ChordDiagram } from './components/ChordDiagram'
@@ -16,7 +20,7 @@ import type { HistoryEntry } from './lib/history'
 type InputMode = 'chord' | 'degree'
 type LayoutMode = 'wrap' | 'horizontal'
 
-type AppParams = { mode: InputMode; input: string; fromKey: string; toKey: string; guitar: boolean; oct: number; rep: number; bpm: number }
+type AppParams = { mode: InputMode; input: string; fromKey: string; toKey: string; guitar: boolean; rep: number; bpm: number }
 
 const DEFAULT_BPM = 120
 
@@ -32,7 +36,6 @@ function readParams(): AppParams {
     fromKey: ALL_KEYS.includes(p.get('from') ?? '') ? p.get('from')! : 'C',
     toKey: ALL_KEYS.includes(p.get('to') ?? '') ? p.get('to')! : 'G',
     guitar: p.get('guitar') === '1',
-    oct: clampInt(Number(p.get('oct')), -2, 2, 0),
     rep: clampInt(Number(p.get('rep')), 1, 4, 1),
     bpm: clampInt(Number(p.get('bpm')), 40, 240, DEFAULT_BPM),
   }
@@ -45,7 +48,6 @@ function writeParams(state: AppParams) {
   if (state.fromKey !== 'C') p.set('from', state.fromKey)
   if (state.toKey !== 'G') p.set('to', state.toKey)
   if (state.guitar) p.set('guitar', '1')
-  if (state.oct !== 0) p.set('oct', String(state.oct))
   if (state.rep !== 1) p.set('rep', String(state.rep))
   if (state.bpm !== DEFAULT_BPM) p.set('bpm', String(state.bpm))
   const qs = p.toString()
@@ -69,7 +71,6 @@ function App() {
   const [muted, setMuted] = useState(false)
   const [layout, setLayout] = useState<LayoutMode>('wrap')
   const [loop, setLoop] = useState(false)
-  const [octaveShift, setOctaveShift] = useState(init.oct)
   const [repeats, setRepeats] = useState(init.rep)
   const [volume, setVolumeState] = useState(() => getVolume())
 
@@ -78,8 +79,8 @@ function App() {
   const scrollContainerRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    writeParams({ mode, input, fromKey, toKey, guitar: showDiagrams, oct: octaveShift, rep: repeats, bpm })
-  }, [mode, input, fromKey, toKey, showDiagrams, octaveShift, repeats, bpm])
+    writeParams({ mode, input, fromKey, toKey, guitar: showDiagrams, rep: repeats, bpm })
+  }, [mode, input, fromKey, toKey, showDiagrams, repeats, bpm])
 
   // Auto-scroll: position current chord near the TOP of the scroll container
   useEffect(() => {
@@ -98,9 +99,13 @@ function App() {
   const getResult = useCallback(() => {
     if (!input.trim()) return null
     if (mode === 'chord') {
-      return { chords: transposeProgression(input, fromKey, toKey), degrees: chordsToRoman(input, fromKey) }
+      return {
+        chords: transposeProgression(input, fromKey, toKey),
+        degrees: chordsToRoman(input, fromKey),
+        octs: parseChordOcts(input),
+      }
     } else {
-      return { chords: romanToChords(input, toKey), degrees: null }
+      return { chords: romanToChords(input, toKey), degrees: null, octs: parseRomanOcts(input) }
     }
   }, [input, fromKey, toKey, mode])
 
@@ -113,9 +118,9 @@ function App() {
 
   const handleSwapKeys = () => { setFromKey(toKey); setToKey(fromKey) }
 
-  const handlePlayChord = (chordName: string) => {
+  const handlePlayChord = (chordName: string, oct: number) => {
     if (muted) return
-    const midis = chordToMidi(chordName, octaveShift)
+    const midis = chordToMidi(chordName, oct)
     if (midis.length) playChord(midis)
   }
 
@@ -131,10 +136,14 @@ function App() {
     const player = createProgressionPlayer(result.chords, bpm, (idx) => {
       setPlayingIdx(idx)
       if (idx === -1) setPlayerState('stopped')
-    }, { mute: muted, loop, octaveShift, repeatsPerChord: repeats })
+    }, { mute: muted, loop, octShifts: result.octs, repeatsPerChord: repeats })
     playerRef.current = player
     player.play()
     setPlayerState('playing')
+  }
+
+  const handleShiftOct = (chordIndex: number, delta: number) => {
+    setInput(prev => shiftOctInInput(prev, mode, chordIndex, delta))
   }
 
   const handlePause = () => {
@@ -151,13 +160,12 @@ function App() {
   const handleSave = () => {
     if (!input.trim()) return
     const name = window.prompt('名前（メモ）を入力', input) ?? ''
-    addHistory({ name, mode, input, fromKey, toKey, guitar: showDiagrams, octaveShift, repeats, bpm })
+    addHistory({ name, mode, input, fromKey, toKey, guitar: showDiagrams, repeats, bpm })
   }
 
   const handleRestore = (entry: HistoryEntry) => {
     setMode(entry.mode); setInput(entry.input); setFromKey(entry.fromKey); setToKey(entry.toKey)
     setShowDiagrams(entry.guitar ?? false)
-    setOctaveShift(entry.octaveShift ?? 0)
     setRepeats(entry.repeats ?? 1)
     setBpm(entry.bpm ?? DEFAULT_BPM)
   }
@@ -305,17 +313,6 @@ function App() {
                   Loop
                 </button>
 
-                {/* Octave shift */}
-                <select value={octaveShift} onChange={e => setOctaveShift(Number(e.target.value))}
-                  className="text-xs px-1.5 py-1 rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-600 dark:text-gray-300 font-mono"
-                  title="オクターブ">
-                  <option value={-2}>Oct -2</option>
-                  <option value={-1}>Oct -1</option>
-                  <option value={0}>Oct ±0</option>
-                  <option value={1}>Oct +1</option>
-                  <option value={2}>Oct +2</option>
-                </select>
-
                 {/* Repeats per chord */}
                 <select value={repeats} onChange={e => setRepeats(Number(e.target.value))}
                   className="text-xs px-1.5 py-1 rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-600 dark:text-gray-300 font-mono"
@@ -361,11 +358,12 @@ function App() {
                 {result.chords.map((chord, i) => {
                   const isPlaying = playingIdx === i
                   const chordData = showDiagrams ? lookupChord(chord) : null
+                  const oct = result.octs[i] ?? 0
                   return (
                     <div key={i}
                       ref={el => { chordRefs.current[i] = el }}
                       className={chordItemClass(isPlaying)}
-                      onClick={() => handlePlayChord(chord)}>
+                      onClick={() => handlePlayChord(chord, oct)}>
                       {showDiagrams ? (
                         chordData ? (
                           <ChordDiagram name={chord} positions={chordData.positions} degree={result.degrees?.[i]} />
@@ -381,6 +379,7 @@ function App() {
                           {result.degrees?.[i] && <span className="text-xs text-gray-400 font-mono">{result.degrees[i]}</span>}
                         </div>
                       )}
+                      <OctControl oct={oct} onShift={delta => handleShiftOct(i, delta)} />
                     </div>
                   )
                 })}
@@ -389,7 +388,7 @@ function App() {
 
             {/* Footer actions */}
             <div className="px-5 py-3 border-t border-gray-100 dark:border-gray-800 flex gap-2">
-              <CopyButton text={result.chords.join(' | ')} />
+              <CopyButton text={result.chords.map((c, i) => c + octToMarker(result.octs[i] ?? 0)).join(' | ')} />
               <button onClick={handleSave}
                 className="text-sm px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
                 Save
@@ -423,6 +422,27 @@ function App() {
       </div>
 
       <History open={historyOpen} onClose={() => setHistoryOpen(false)} onRestore={handleRestore} />
+    </div>
+  )
+}
+
+function OctControl({ oct, onShift }: { oct: number; onShift: (delta: number) => void }) {
+  const stop = (e: React.MouseEvent) => e.stopPropagation()
+  const label = oct > 0 ? `+${oct}` : oct < 0 ? `${oct}` : '±0'
+  const accent = oct > 0
+    ? 'text-indigo-600 dark:text-indigo-400'
+    : oct < 0
+      ? 'text-amber-600 dark:text-amber-400'
+      : 'text-gray-400 dark:text-gray-500'
+  return (
+    <div className="flex items-center justify-center gap-0.5 mt-1" onClick={stop}>
+      <button onClick={(e) => { stop(e); onShift(-1) }} disabled={oct <= -2}
+        className="w-5 h-5 rounded text-xs leading-none text-gray-400 hover:text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-900/30 disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-gray-400 transition-colors"
+        title="オクターブ下げ">−</button>
+      <span className={`text-[10px] font-mono w-7 text-center ${accent}`}>oct{label}</span>
+      <button onClick={(e) => { stop(e); onShift(1) }} disabled={oct >= 2}
+        className="w-5 h-5 rounded text-xs leading-none text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-gray-400 transition-colors"
+        title="オクターブ上げ">+</button>
     </div>
   )
 }

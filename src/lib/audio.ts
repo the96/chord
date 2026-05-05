@@ -104,11 +104,11 @@ export function createProgressionPlayer(
   chordNames: string[],
   bpm: number,
   onChordStart: (index: number) => void,
-  options?: { mute?: boolean; loop?: boolean; octaveShift?: number; repeatsPerChord?: number },
+  options?: { mute?: boolean; loop?: boolean; octShifts?: number[]; repeatsPerChord?: number },
 ): ProgressionPlayer {
   const chordDuration = (60 / bpm) * 2
   const repeats = Math.max(1, Math.floor(options?.repeatsPerChord ?? 1))
-  const octaveShift = options?.octaveShift ?? 0
+  const octShifts = options?.octShifts ?? []
   let currentIndex = 0
   let timeoutId: number | undefined
   let currentState: PlayerState = 'stopped'
@@ -126,7 +126,7 @@ export function createProgressionPlayer(
       onChordStart(index)
     }
     if (!options?.mute) {
-      const midis = chordToMidi(chordNames[index], octaveShift)
+      const midis = chordToMidi(chordNames[index], octShifts[index] ?? 0)
       if (midis.length) playChord(midis, chordDuration * 0.9)
     }
     const isLastRepeat = repeatCount + 1 >= repeats

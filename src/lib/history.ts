@@ -7,7 +7,6 @@ export interface HistoryEntry {
   toKey: string
   createdAt: number
   guitar?: boolean
-  octaveShift?: number
   repeats?: number
   bpm?: number
 }

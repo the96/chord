@@ -156,26 +156,73 @@ export function getDiatonicChords(key: string): { chord: string; roman: string }
   }))
 }
 
-/** Parse chord input - handles various separators */
-export function parseChordInput(input: string): string[] {
+const OCT_SUFFIX_RE = /(\^+|_+)$/
+const MAX_OCT = 2
+
+function splitOctMarker(token: string): { body: string; oct: number } {
+  const m = token.match(OCT_SUFFIX_RE)
+  if (!m) return { body: token, oct: 0 }
+  const sign = m[1][0] === '^' ? 1 : -1
+  const oct = sign * Math.min(MAX_OCT, m[1].length)
+  return { body: token.slice(0, -m[1].length), oct }
+}
+
+export function octToMarker(oct: number): string {
+  if (oct > 0) return '^'.repeat(Math.min(MAX_OCT, oct))
+  if (oct < 0) return '_'.repeat(Math.min(MAX_OCT, -oct))
+  return ''
+}
+
+function tokenize(input: string): string[] {
   return input
     .replace(/[|｜]/g, ' ')
     .replace(/[-–—→]/g, ' ')
     .replace(/,/g, ' ')
     .split(/\s+/)
     .map(s => s.trim())
-    .filter(s => s.length > 0 && /^[A-G]/.test(s))
+    .filter(s => s.length > 0)
+}
+
+function parseTokens(input: string, validBody: RegExp): { body: string; oct: number }[] {
+  return tokenize(input)
+    .map(splitOctMarker)
+    .filter(t => validBody.test(t.body))
+}
+
+const CHORD_PREFIX = /^[A-G]/
+const ROMAN_PREFIX = /^[IiVv#b]/
+
+/** Parse chord input - handles various separators and per-chord octave markers (^ / _) */
+export function parseChordInput(input: string): string[] {
+  return parseTokens(input, CHORD_PREFIX).map(t => t.body)
+}
+
+export function parseChordOcts(input: string): number[] {
+  return parseTokens(input, CHORD_PREFIX).map(t => t.oct)
 }
 
 /** Parse Roman numeral input */
 export function parseRomanInput(input: string): string[] {
-  return input
-    .replace(/[|｜]/g, ' ')
-    .replace(/[-–—→]/g, ' ')
-    .replace(/,/g, ' ')
-    .split(/\s+/)
-    .map(s => s.trim())
-    .filter(s => s.length > 0 && /^[IiVv#b]/.test(s))
+  return parseTokens(input, ROMAN_PREFIX).map(t => t.body)
+}
+
+export function parseRomanOcts(input: string): number[] {
+  return parseTokens(input, ROMAN_PREFIX).map(t => t.oct)
+}
+
+/** Adjust the octave marker of the index-th valid chord token in the input string */
+export function shiftOctInInput(input: string, mode: 'chord' | 'degree', chordIndex: number, delta: number): string {
+  const validBody = mode === 'chord' ? CHORD_PREFIX : ROMAN_PREFIX
+  const tokens = tokenize(input)
+  let validIdx = 0
+  const updated = tokens.map(tok => {
+    const { body, oct } = splitOctMarker(tok)
+    if (!validBody.test(body)) return tok
+    if (validIdx++ !== chordIndex) return tok
+    const next = Math.max(-MAX_OCT, Math.min(MAX_OCT, oct + delta))
+    return body + octToMarker(next)
+  })
+  return updated.join(' ')
 }
 
 /** Detect key from chord progression (best guess) */
