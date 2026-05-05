@@ -16,7 +16,15 @@ import type { HistoryEntry } from './lib/history'
 type InputMode = 'chord' | 'degree'
 type LayoutMode = 'wrap' | 'horizontal'
 
-function readParams(): { mode: InputMode; input: string; fromKey: string; toKey: string; guitar: boolean } {
+type AppParams = { mode: InputMode; input: string; fromKey: string; toKey: string; guitar: boolean; oct: number; rep: number; bpm: number }
+
+const DEFAULT_BPM = 120
+
+function clampInt(n: number, min: number, max: number, fallback: number): number {
+  return Number.isFinite(n) && n >= min && n <= max ? Math.trunc(n) : fallback
+}
+
+function readParams(): AppParams {
   const p = new URLSearchParams(window.location.search)
   return {
     mode: p.get('mode') === 'degree' ? 'degree' : 'chord',
@@ -24,16 +32,22 @@ function readParams(): { mode: InputMode; input: string; fromKey: string; toKey:
     fromKey: ALL_KEYS.includes(p.get('from') ?? '') ? p.get('from')! : 'C',
     toKey: ALL_KEYS.includes(p.get('to') ?? '') ? p.get('to')! : 'G',
     guitar: p.get('guitar') === '1',
+    oct: clampInt(Number(p.get('oct')), -2, 2, 0),
+    rep: clampInt(Number(p.get('rep')), 1, 4, 1),
+    bpm: clampInt(Number(p.get('bpm')), 40, 240, DEFAULT_BPM),
   }
 }
 
-function writeParams(state: { mode: InputMode; input: string; fromKey: string; toKey: string; guitar: boolean }) {
+function writeParams(state: AppParams) {
   const p = new URLSearchParams()
   if (state.mode !== 'chord') p.set('mode', state.mode)
   if (state.input) p.set('q', state.input)
   if (state.fromKey !== 'C') p.set('from', state.fromKey)
   if (state.toKey !== 'G') p.set('to', state.toKey)
   if (state.guitar) p.set('guitar', '1')
+  if (state.oct !== 0) p.set('oct', String(state.oct))
+  if (state.rep !== 1) p.set('rep', String(state.rep))
+  if (state.bpm !== DEFAULT_BPM) p.set('bpm', String(state.bpm))
   const qs = p.toString()
   const url = qs ? `?${qs}` : window.location.pathname
   window.history.replaceState(null, '', url)
@@ -51,10 +65,12 @@ function App() {
   const playerRef = useRef<ProgressionPlayer | null>(null)
   const [historyOpen, setHistoryOpen] = useState(false)
   const [pageExpanded, setPageExpanded] = useState(false)
-  const [bpm, setBpm] = useState(120)
+  const [bpm, setBpm] = useState(init.bpm)
   const [muted, setMuted] = useState(false)
   const [layout, setLayout] = useState<LayoutMode>('wrap')
   const [loop, setLoop] = useState(false)
+  const [octaveShift, setOctaveShift] = useState(init.oct)
+  const [repeats, setRepeats] = useState(init.rep)
   const [volume, setVolumeState] = useState(() => getVolume())
 
   // Refs for auto-scroll
@@ -62,8 +78,8 @@ function App() {
   const scrollContainerRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    writeParams({ mode, input, fromKey, toKey, guitar: showDiagrams })
-  }, [mode, input, fromKey, toKey, showDiagrams])
+    writeParams({ mode, input, fromKey, toKey, guitar: showDiagrams, oct: octaveShift, rep: repeats, bpm })
+  }, [mode, input, fromKey, toKey, showDiagrams, octaveShift, repeats, bpm])
 
   // Auto-scroll: position current chord near the TOP of the scroll container
   useEffect(() => {
@@ -99,7 +115,7 @@ function App() {
 
   const handlePlayChord = (chordName: string) => {
     if (muted) return
-    const midis = chordToMidi(chordName)
+    const midis = chordToMidi(chordName, octaveShift)
     if (midis.length) playChord(midis)
   }
 
@@ -115,7 +131,7 @@ function App() {
     const player = createProgressionPlayer(result.chords, bpm, (idx) => {
       setPlayingIdx(idx)
       if (idx === -1) setPlayerState('stopped')
-    }, { mute: muted, loop })
+    }, { mute: muted, loop, octaveShift, repeatsPerChord: repeats })
     playerRef.current = player
     player.play()
     setPlayerState('playing')
@@ -135,11 +151,15 @@ function App() {
   const handleSave = () => {
     if (!input.trim()) return
     const name = window.prompt('名前（メモ）を入力', input) ?? ''
-    addHistory({ name, mode, input, fromKey, toKey })
+    addHistory({ name, mode, input, fromKey, toKey, guitar: showDiagrams, octaveShift, repeats, bpm })
   }
 
   const handleRestore = (entry: HistoryEntry) => {
     setMode(entry.mode); setInput(entry.input); setFromKey(entry.fromKey); setToKey(entry.toKey)
+    setShowDiagrams(entry.guitar ?? false)
+    setOctaveShift(entry.octaveShift ?? 0)
+    setRepeats(entry.repeats ?? 1)
+    setBpm(entry.bpm ?? DEFAULT_BPM)
   }
 
   const presets = [
@@ -212,7 +232,8 @@ function App() {
             {mode === 'chord' ? 'コード進行 (例: C Am F G)' : '度数 (例: I V vi IV)'}
           </label>
           <div className="relative">
-            <input type="text" value={input} onChange={e => setInput(e.target.value)}
+            <input type="text" value={input}
+              onChange={e => setInput(e.target.value.replace(/[|｜]/g, ' ').replace(/ {2,}/g, ' '))}
               placeholder={mode === 'chord' ? 'C Am F G' : 'I V vi IV'}
               className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 px-4 py-3 pr-12 text-lg font-mono placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent" />
             {input.trim() && (
@@ -283,6 +304,27 @@ function App() {
                   title={loop ? 'ループ再生OFF' : 'ループ再生ON'}>
                   Loop
                 </button>
+
+                {/* Octave shift */}
+                <select value={octaveShift} onChange={e => setOctaveShift(Number(e.target.value))}
+                  className="text-xs px-1.5 py-1 rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-600 dark:text-gray-300 font-mono"
+                  title="オクターブ">
+                  <option value={-2}>Oct -2</option>
+                  <option value={-1}>Oct -1</option>
+                  <option value={0}>Oct ±0</option>
+                  <option value={1}>Oct +1</option>
+                  <option value={2}>Oct +2</option>
+                </select>
+
+                {/* Repeats per chord */}
+                <select value={repeats} onChange={e => setRepeats(Number(e.target.value))}
+                  className="text-xs px-1.5 py-1 rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-600 dark:text-gray-300 font-mono"
+                  title="各コードの繰り返し回数">
+                  <option value={1}>×1</option>
+                  <option value={2}>×2</option>
+                  <option value={3}>×3</option>
+                  <option value={4}>×4</option>
+                </select>
 
                 {/* BPM */}
                 <div className="flex items-center gap-1.5">

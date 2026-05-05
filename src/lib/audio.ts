@@ -15,7 +15,7 @@ function midiToFreq(midi: number): number {
 }
 
 /** Get MIDI notes for a chord name, using a simple piano voicing */
-export function chordToMidi(chordName: string): number[] {
+export function chordToMidi(chordName: string, octaveShift = 0): number[] {
   const normalized = normalizeChordName(chordName)
   const main = normalized.includes('/') ? normalized.split('/')[0] : normalized
   const info = Chord.get(main)
@@ -39,7 +39,7 @@ export function chordToMidi(chordName: string): number[] {
     if (bassMidi != null) midis.unshift(bassMidi)
   }
 
-  return midis
+  return octaveShift ? midis.map(m => m + 12 * octaveShift) : midis
 }
 
 /** Master volume (0–1) */
@@ -104,14 +104,16 @@ export function createProgressionPlayer(
   chordNames: string[],
   bpm: number,
   onChordStart: (index: number) => void,
-  options?: { mute?: boolean; loop?: boolean },
+  options?: { mute?: boolean; loop?: boolean; octaveShift?: number; repeatsPerChord?: number },
 ): ProgressionPlayer {
   const chordDuration = (60 / bpm) * 2
+  const repeats = Math.max(1, Math.floor(options?.repeatsPerChord ?? 1))
+  const octaveShift = options?.octaveShift ?? 0
   let currentIndex = 0
   let timeoutId: number | undefined
   let currentState: PlayerState = 'stopped'
 
-  function playAt(index: number) {
+  function playAt(index: number, repeatCount = 0) {
     if (currentState !== 'playing') return
     if (index >= chordNames.length) {
       if (options?.loop) { playAt(0); return }
@@ -119,13 +121,19 @@ export function createProgressionPlayer(
       onChordStart(-1)
       return
     }
-    currentIndex = index
-    onChordStart(index)
+    if (repeatCount === 0) {
+      currentIndex = index
+      onChordStart(index)
+    }
     if (!options?.mute) {
-      const midis = chordToMidi(chordNames[index])
+      const midis = chordToMidi(chordNames[index], octaveShift)
       if (midis.length) playChord(midis, chordDuration * 0.9)
     }
-    timeoutId = window.setTimeout(() => playAt(index + 1), chordDuration * 1000)
+    const isLastRepeat = repeatCount + 1 >= repeats
+    timeoutId = window.setTimeout(
+      () => playAt(isLastRepeat ? index + 1 : index, isLastRepeat ? 0 : repeatCount + 1),
+      chordDuration * 1000,
+    )
   }
 
   return {

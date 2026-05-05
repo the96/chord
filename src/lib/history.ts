@@ -6,6 +6,10 @@ export interface HistoryEntry {
   fromKey: string
   toKey: string
   createdAt: number
+  guitar?: boolean
+  octaveShift?: number
+  repeats?: number
+  bpm?: number
 }
 
 const STORAGE_KEY = 'chord-transposer-history'
