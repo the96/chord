@@ -90,6 +90,30 @@ export function playChord(midiNotes: number[], duration = 0.8): void {
   }
 }
 
+/** Short metronome click. Accent = first beat of pre-count. */
+function playClick(accent: boolean): void {
+  const ac = getCtx()
+  const now = ac.currentTime
+  const baseFreq = accent ? 1800 : 1200
+
+  const osc = ac.createOscillator()
+  osc.type = 'sine'
+  osc.frequency.setValueAtTime(baseFreq, now)
+  osc.frequency.exponentialRampToValueAtTime(baseFreq * 0.4, now + 0.05)
+
+  const gain = ac.createGain()
+  const peak = masterVolume * (accent ? 0.5 : 0.35)
+  gain.gain.setValueAtTime(0, now)
+  gain.gain.linearRampToValueAtTime(peak, now + 0.002)
+  gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.05)
+
+  osc.connect(gain)
+  gain.connect(ac.destination)
+
+  osc.start(now)
+  osc.stop(now + 0.08)
+}
+
 export type PlayerState = 'stopped' | 'playing' | 'paused'
 
 export interface ProgressionPlayer {
@@ -104,14 +128,24 @@ export function createProgressionPlayer(
   chordNames: string[],
   bpm: number,
   onChordStart: (index: number) => void,
-  options?: { mute?: boolean; loop?: boolean; octShifts?: number[]; repeatsPerChord?: number },
+  options?: {
+    mute?: boolean
+    loop?: boolean
+    octShifts?: number[]
+    repeatsPerChord?: number
+    preCountBeats?: number
+    onPreCountBeat?: (beat: number) => void
+  },
 ): ProgressionPlayer {
-  const chordDuration = (60 / bpm) * 2
+  const beatDuration = 60 / bpm
+  const chordDuration = beatDuration * 2
   const repeats = Math.max(1, Math.floor(options?.repeatsPerChord ?? 1))
   const octShifts = options?.octShifts ?? []
+  const preCountBeats = Math.max(0, Math.floor(options?.preCountBeats ?? 0))
   let currentIndex = 0
   let timeoutId: number | undefined
   let currentState: PlayerState = 'stopped'
+  let inPreCount = false
 
   function playAt(index: number, repeatCount = 0) {
     if (currentState !== 'playing') return
@@ -136,6 +170,20 @@ export function createProgressionPlayer(
     )
   }
 
+  function runPreCount(beat: number) {
+    if (currentState !== 'playing') return
+    if (beat > preCountBeats) {
+      inPreCount = false
+      options?.onPreCountBeat?.(0)
+      playAt(0)
+      return
+    }
+    inPreCount = true
+    options?.onPreCountBeat?.(beat)
+    playClick(beat === 1)
+    timeoutId = window.setTimeout(() => runPreCount(beat + 1), beatDuration * 1000)
+  }
+
   return {
     play() {
       if (currentState === 'paused') {
@@ -143,20 +191,29 @@ export function createProgressionPlayer(
         playAt(currentIndex)
       } else {
         currentState = 'playing'
-        playAt(0)
+        if (preCountBeats > 0) runPreCount(1)
+        else playAt(0)
       }
     },
     pause() {
       if (currentState !== 'playing') return
       currentState = 'paused'
       if (timeoutId != null) clearTimeout(timeoutId)
-      // Keep currentIndex so resume continues from next chord
-      currentIndex = currentIndex + 1
+      if (inPreCount) {
+        // Cancel pre-count; resume will start chord 0 immediately.
+        inPreCount = false
+        options?.onPreCountBeat?.(0)
+      } else {
+        // Keep currentIndex so resume continues from next chord
+        currentIndex = currentIndex + 1
+      }
     },
     stop() {
       currentState = 'stopped'
       if (timeoutId != null) clearTimeout(timeoutId)
       currentIndex = 0
+      inPreCount = false
+      options?.onPreCountBeat?.(0)
       onChordStart(-1)
     },
     state() { return currentState },

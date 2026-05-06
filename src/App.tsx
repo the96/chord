@@ -73,6 +73,8 @@ function App() {
   const [loop, setLoop] = useState(false)
   const [repeats, setRepeats] = useState(init.rep)
   const [volume, setVolumeState] = useState(() => getVolume())
+  const [preCount, setPreCount] = useState(false)
+  const [preCountBeat, setPreCountBeat] = useState(0)
 
   // Refs for auto-scroll
   const chordRefs = useRef<(HTMLDivElement | null)[]>([])
@@ -136,7 +138,14 @@ function App() {
     const player = createProgressionPlayer(result.chords, bpm, (idx) => {
       setPlayingIdx(idx)
       if (idx === -1) setPlayerState('stopped')
-    }, { mute: muted, loop, octShifts: result.octs, repeatsPerChord: repeats })
+    }, {
+      mute: muted,
+      loop,
+      octShifts: result.octs,
+      repeatsPerChord: repeats,
+      preCountBeats: preCount ? 4 : 0,
+      onPreCountBeat: setPreCountBeat,
+    })
     playerRef.current = player
     player.play()
     setPlayerState('playing')
@@ -282,7 +291,11 @@ function App() {
               <div className="flex flex-wrap items-center gap-2.5">
                 {/* Play/Pause/Stop */}
                 <div className="flex items-center gap-1">
-                  {playerState === 'playing' ? (
+                  {preCountBeat > 0 ? (
+                    <div className="p-1.5 rounded-lg bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300" title="プリカウント">
+                      <span className="h-5 w-5 flex items-center justify-center font-mono font-bold">{preCountBeat}</span>
+                    </div>
+                  ) : playerState === 'playing' ? (
                     <button onClick={handlePause} className="p-1.5 rounded-lg bg-indigo-100 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-200 dark:hover:bg-indigo-900/60 transition-colors" title="一時停止">
                       <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="currentColor" viewBox="0 0 24 24"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg>
                     </button>
@@ -311,6 +324,13 @@ function App() {
                   className={`text-xs px-2.5 py-1 rounded-md transition-colors ${loop ? 'bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300' : 'text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800'}`}
                   title={loop ? 'ループ再生OFF' : 'ループ再生ON'}>
                   Loop
+                </button>
+
+                {/* Pre-count */}
+                <button onClick={() => setPreCount(v => !v)}
+                  className={`text-xs px-2.5 py-1 rounded-md transition-colors ${preCount ? 'bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300' : 'text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800'}`}
+                  title={preCount ? 'プリカウントOFF' : 'プリカウントON (4拍)'}>
+                  Count-in
                 </button>
 
                 {/* Repeats per chord */}
