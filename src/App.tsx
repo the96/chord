@@ -6,6 +6,7 @@ import {
   chordsToRoman,
   parseChordOcts,
   parseRomanOcts,
+  parseRomanInput,
   octToMarker,
   shiftOctInInput,
 } from './lib/chord-utils'
@@ -408,7 +409,19 @@ function App() {
 
             {/* Footer actions */}
             <div className="px-5 py-3 border-t border-gray-100 dark:border-gray-800 flex gap-2">
-              <CopyButton text={result.chords.map((c, i) => c + octToMarker(result.octs[i] ?? 0)).join(' | ')} />
+              <CopyButton
+                text={result.chords.map((c, i) => c + octToMarker(result.octs[i] ?? 0)).join(' | ')}
+                label="コードCopy"
+              />
+              {(() => {
+                const degrees = result.degrees ?? parseRomanInput(input)
+                return degrees.length > 0 && (
+                  <CopyButton
+                    text={degrees.map((d, i) => d + octToMarker(result.octs[i] ?? 0)).join(' | ')}
+                    label="度数Copy"
+                  />
+                )
+              })()}
               <button onClick={handleSave}
                 className="text-sm px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
                 Save
@@ -467,12 +480,12 @@ function OctControl({ oct, onShift }: { oct: number; onShift: (delta: number) =>
   )
 }
 
-function CopyButton({ text }: { text: string }) {
+function CopyButton({ text, label = 'Copy' }: { text: string; label?: string }) {
   const [copied, setCopied] = useState(false)
   const handleCopy = async () => { await navigator.clipboard.writeText(text); setCopied(true); setTimeout(() => setCopied(false), 1500) }
   return (
     <button onClick={handleCopy} className="text-sm px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
-      {copied ? 'Copied!' : 'Copy'}
+      {copied ? 'Copied!' : label}
     </button>
   )
 }
