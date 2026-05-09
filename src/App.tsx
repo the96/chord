@@ -9,6 +9,7 @@ import {
   parseRomanInput,
   octToMarker,
   shiftOctInInput,
+  degreeNumber,
 } from './lib/chord-utils'
 import { lookupChord } from './lib/guitar-chords'
 import { ChordDiagram } from './components/ChordDiagram'
@@ -113,6 +114,7 @@ function App() {
   }, [input, fromKey, toKey, mode])
 
   const result = getResult()
+  const degrees = result ? (result.degrees ?? parseRomanInput(input)) : []
 
   // Stop player when result changes
   useEffect(() => {
@@ -380,27 +382,38 @@ function App() {
                   const isPlaying = playingIdx === i
                   const chordData = showDiagrams ? lookupChord(chord) : null
                   const oct = result.octs[i] ?? 0
+                  const fromDeg = degrees[i]
+                  const toDeg = degrees[i + 1]
+                  const isLast = i === result.chords.length - 1
                   return (
-                    <div key={i}
-                      ref={el => { chordRefs.current[i] = el }}
-                      className={chordItemClass(isPlaying)}
-                      onClick={() => handlePlayChord(chord, oct)}>
-                      {showDiagrams ? (
-                        chordData ? (
-                          <ChordDiagram name={chord} positions={chordData.positions} degree={result.degrees?.[i]} />
+                    <div key={i} className="flex items-center gap-1">
+                      <div
+                        ref={el => { chordRefs.current[i] = el }}
+                        className={chordItemClass(isPlaying)}
+                        onClick={() => handlePlayChord(chord, oct)}>
+                        {showDiagrams ? (
+                          chordData ? (
+                            <ChordDiagram name={chord} positions={chordData.positions} degree={result.degrees?.[i]} />
+                          ) : (
+                            <div className="flex flex-col items-center gap-1">
+                              <span className="text-lg font-mono font-bold text-indigo-600 dark:text-indigo-400">{chord}</span>
+                              {result.degrees?.[i] && <span className="text-xs text-gray-400 font-mono">{result.degrees[i]}</span>}
+                            </div>
+                          )
                         ) : (
-                          <div className="flex flex-col items-center gap-1">
-                            <span className="text-lg font-mono font-bold text-indigo-600 dark:text-indigo-400">{chord}</span>
+                          <div className="flex flex-col items-center gap-1 px-1">
+                            <span className="text-2xl font-mono font-bold text-indigo-600 dark:text-indigo-400">{chord}</span>
                             {result.degrees?.[i] && <span className="text-xs text-gray-400 font-mono">{result.degrees[i]}</span>}
                           </div>
-                        )
-                      ) : (
-                        <div className="flex flex-col items-center gap-1 px-1">
-                          <span className="text-2xl font-mono font-bold text-indigo-600 dark:text-indigo-400">{chord}</span>
-                          {result.degrees?.[i] && <span className="text-xs text-gray-400 font-mono">{result.degrees[i]}</span>}
-                        </div>
+                        )}
+                        <OctControl oct={oct} onShift={delta => handleShiftOct(i, delta)} />
+                      </div>
+                      {!isLast && fromDeg && toDeg && (
+                        <span className="text-xs font-mono text-gray-400 dark:text-gray-500 self-center select-none whitespace-nowrap px-0.5"
+                          title={`${fromDeg} → ${toDeg}`}>
+                          {degreeNumber(fromDeg)}-{degreeNumber(toDeg)}
+                        </span>
                       )}
-                      <OctControl oct={oct} onShift={delta => handleShiftOct(i, delta)} />
                     </div>
                   )
                 })}
@@ -413,15 +426,12 @@ function App() {
                 text={result.chords.map((c, i) => c + octToMarker(result.octs[i] ?? 0)).join(' | ')}
                 label="コードCopy"
               />
-              {(() => {
-                const degrees = result.degrees ?? parseRomanInput(input)
-                return degrees.length > 0 && (
-                  <CopyButton
-                    text={degrees.map((d, i) => d + octToMarker(result.octs[i] ?? 0)).join(' | ')}
-                    label="度数Copy"
-                  />
-                )
-              })()}
+              {degrees.length > 0 && (
+                <CopyButton
+                  text={degrees.map((d, i) => d + octToMarker(result.octs[i] ?? 0)).join(' | ')}
+                  label="度数Copy"
+                />
+              )}
               <button onClick={handleSave}
                 className="text-sm px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
                 Save

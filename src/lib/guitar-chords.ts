@@ -17,10 +17,10 @@ export interface ChordData {
 
 // Map note names to the keys used in chords-db
 const NOTE_TO_DB_KEY: Record<string, string> = {
-  'C': 'C', 'C#': 'C#', 'Db': 'C#',
+  'C': 'C', 'C#': 'Csharp', 'Db': 'Csharp',
   'D': 'D', 'D#': 'Eb', 'Eb': 'Eb',
   'E': 'E',
-  'F': 'F', 'F#': 'F#', 'Gb': 'F#',
+  'F': 'F', 'F#': 'Fsharp', 'Gb': 'Fsharp',
   'G': 'G', 'G#': 'Ab', 'Ab': 'Ab',
   'A': 'A', 'A#': 'Bb', 'Bb': 'Bb',
   'B': 'B',

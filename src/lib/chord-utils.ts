@@ -144,6 +144,21 @@ export function chordsToRoman(input: string, key: string): string[] {
   return Progression.toRomanNumerals(key, chords)
 }
 
+const ROMAN_MAP: Record<string, number> = {
+  I: 1, II: 2, III: 3, IV: 4, V: 5, VI: 6, VII: 7,
+}
+
+/** Extract the degree number (with accidental) from a Roman numeral.
+ *  "IIm7" -> "2", "bVII" -> "♭7", "#IVdim" -> "♯4". Returns input on failure. */
+export function degreeNumber(roman: string): string {
+  const m = roman.match(/^([#b]*)([IiVv]+)/)
+  if (!m) return roman
+  const num = ROMAN_MAP[m[2].toUpperCase()]
+  if (!num) return roman
+  const acc = m[1].replace(/#/g, '♯').replace(/b/g, '♭')
+  return `${acc}${num}`
+}
+
 /** Get diatonic chords for a key */
 export function getDiatonicChords(key: string): { chord: string; roman: string }[] {
   const keyInfo = Key.majorKey(key)
