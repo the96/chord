@@ -7,6 +7,7 @@ export interface ChordPosition {
   baseFret: number
   barres: number[]
   capo?: boolean
+  midi?: number[]    // played notes, low to high
 }
 
 export interface ChordData {
@@ -83,11 +84,44 @@ function parseChordName(chord: string): { root: string; suffix: string } | null 
   return { root: match[1], suffix: match[2] }
 }
 
+const NOTE_TO_PC: Record<string, number> = {
+  'C': 0, 'B#': 0, 'C#': 1, 'Db': 1, 'D': 2, 'D#': 3, 'Eb': 3,
+  'E': 4, 'Fb': 4, 'E#': 5, 'F': 5, 'F#': 6, 'Gb': 6,
+  'G': 7, 'G#': 8, 'Ab': 8, 'A': 9, 'A#': 10, 'Bb': 10,
+  'B': 11, 'Cb': 11,
+}
+
+/** Adjust positions so the lowest played note matches the slash bass.
+ *  Strategy: prefer voicings whose existing bass already matches; otherwise
+ *  mute lower strings of each voicing to expose the bass; fall back to the
+ *  original positions if neither yields a result. */
+function adjustPositionsForBass(positions: ChordPosition[], bassPc: number): ChordPosition[] {
+  const direct = positions.filter(p => p.midi && p.midi.length > 0 && (p.midi[0] % 12) === bassPc)
+  if (direct.length) return direct
+
+  const muted: ChordPosition[] = []
+  for (const pos of positions) {
+    if (!pos.midi || pos.midi.length === 0) continue
+    const matchInMidi = pos.midi.findIndex(m => (m % 12) === bassPc)
+    if (matchInMidi <= 0) continue
+    const playedStrings: number[] = []
+    pos.frets.forEach((f, i) => { if (f >= 0) playedStrings.push(i) })
+    const stringToKeep = playedStrings[matchInMidi]
+    if (stringToKeep == null) continue
+    const remaining = pos.midi.length - matchInMidi
+    if (remaining < 3) continue
+    const newFrets = pos.frets.map((f, i) => (i < stringToKeep ? -1 : f))
+    const newFingers = pos.fingers.map((f, i) => (i < stringToKeep ? 0 : f))
+    muted.push({ ...pos, frets: newFrets, fingers: newFingers, midi: pos.midi.slice(matchInMidi) })
+  }
+  return muted.length ? muted : positions
+}
+
 /** Look up guitar chord data from a chord name like "Cm7", "Dmaj7", etc. */
 export function lookupChord(chordName: string): ChordData | null {
-  // Handle slash chords - strip bass note for diagram lookup
   const slashIdx = chordName.indexOf('/')
   const mainChord = slashIdx >= 0 ? chordName.substring(0, slashIdx) : chordName
+  const bassNote = slashIdx >= 0 ? chordName.substring(slashIdx + 1) : ''
 
   const parsed = parseChordName(mainChord)
   if (!parsed) return null
@@ -95,7 +129,6 @@ export function lookupChord(chordName: string): ChordData | null {
   const dbKey = NOTE_TO_DB_KEY[parsed.root]
   if (!dbKey) return null
 
-  // Try direct mapping first, then normalized form
   const normalized = normalizeSuffix(parsed.suffix)
   const dbSuffix = SUFFIX_MAP[parsed.suffix] ?? SUFFIX_MAP[normalized]
   if (!dbSuffix) return null
@@ -104,5 +137,13 @@ export function lookupChord(chordName: string): ChordData | null {
   if (!chords) return null
 
   const found = chords.find(c => c.suffix === dbSuffix)
-  return found || null
+  if (!found) return null
+
+  if (bassNote) {
+    const bassPc = NOTE_TO_PC[bassNote]
+    if (bassPc != null) {
+      return { ...found, positions: adjustPositionsForBass(found.positions, bassPc) }
+    }
+  }
+  return found
 }
