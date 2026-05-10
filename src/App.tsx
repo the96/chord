@@ -57,6 +57,12 @@ function writeParams(state: AppParams) {
   window.history.replaceState(null, '', url)
 }
 
+const PAGE_EXPANDED_KEY = 'rekey-page-expanded'
+
+function readPageExpanded(): boolean {
+  try { return localStorage.getItem(PAGE_EXPANDED_KEY) === '1' } catch { return false }
+}
+
 function App() {
   const init = readParams()
   const [mode, setMode] = useState<InputMode>(init.mode)
@@ -68,7 +74,7 @@ function App() {
   const [playerState, setPlayerState] = useState<PlayerState>('stopped')
   const playerRef = useRef<ProgressionPlayer | null>(null)
   const [historyOpen, setHistoryOpen] = useState(false)
-  const [pageExpanded, setPageExpanded] = useState(false)
+  const [pageExpanded, setPageExpanded] = useState(readPageExpanded)
   const [bpm, setBpm] = useState(init.bpm)
   const [muted, setMuted] = useState(false)
   const [layout, setLayout] = useState<LayoutMode>('wrap')
@@ -85,6 +91,10 @@ function App() {
   useEffect(() => {
     writeParams({ mode, input, fromKey, toKey, guitar: showDiagrams, rep: repeats, bpm })
   }, [mode, input, fromKey, toKey, showDiagrams, repeats, bpm])
+
+  useEffect(() => {
+    try { localStorage.setItem(PAGE_EXPANDED_KEY, pageExpanded ? '1' : '0') } catch { /* noop */ }
+  }, [pageExpanded])
 
   // Auto-scroll: position current chord near the TOP of the scroll container
   useEffect(() => {
