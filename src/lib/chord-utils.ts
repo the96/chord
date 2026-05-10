@@ -127,11 +127,9 @@ export function transposeProgression(input: string, fromKey: string, toKey: stri
 }
 
 function romanToChordSingle(roman: string, key: string): string {
-  const c = Progression.fromRomanNumerals(key, [roman])[0]
-  if (!c) return roman
-  const parsed = parseChord(c)
-  if (!parsed) return c
-  return normalizeNote(parsed.root, key) + parsed.suffix
+  // Trust tonal's spelling: it already respects the Roman numeral's accidental
+  // (e.g. bVII -> Bb, #VI -> A#). Normalizing by key would collapse that distinction.
+  return Progression.fromRomanNumerals(key, [roman])[0] || roman
 }
 
 const ROMAN_DEGREE_RE = /^([#b]*[IiVv]+)/
