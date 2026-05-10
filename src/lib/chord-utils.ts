@@ -126,22 +126,44 @@ export function transposeProgression(input: string, fromKey: string, toKey: stri
   return chords.map(c => transposeChord(c, fromKey, toKey))
 }
 
+function romanToChordSingle(roman: string, key: string): string {
+  const c = Progression.fromRomanNumerals(key, [roman])[0]
+  if (!c) return roman
+  const parsed = parseChord(c)
+  if (!parsed) return c
+  return normalizeNote(parsed.root, key) + parsed.suffix
+}
+
+const ROMAN_DEGREE_RE = /^([#b]*[IiVv]+)/
+
+function chordToRomanSingle(chord: string, key: string): string {
+  return Progression.toRomanNumerals(key, [chord])[0] || chord
+}
+
 /** Convert Roman numeral progression to chords in a given key */
 export function romanToChords(input: string, key: string): string[] {
   const romans = parseRomanInput(input)
-  const chords = Progression.fromRomanNumerals(key, romans)
-  return chords.map(c => {
-    // tonal may return enharmonic spellings; normalize them
-    const parsed = parseChord(c)
-    if (!parsed) return c
-    return normalizeNote(parsed.root, key) + parsed.suffix
+  return romans.map(roman => {
+    const slashIdx = roman.indexOf('/')
+    if (slashIdx < 0) return romanToChordSingle(roman, key)
+    const main = romanToChordSingle(roman.substring(0, slashIdx), key)
+    const bassChord = romanToChordSingle(roman.substring(slashIdx + 1), key)
+    const bass = parseChord(bassChord)?.root ?? bassChord
+    return `${main}/${bass}`
   })
 }
 
 /** Convert chords to Roman numerals in a given key */
 export function chordsToRoman(input: string, key: string): string[] {
   const chords = parseChordInput(input)
-  return Progression.toRomanNumerals(key, chords)
+  return chords.map(chord => {
+    const slashIdx = chord.indexOf('/')
+    if (slashIdx < 0) return chordToRomanSingle(chord, key)
+    const main = chordToRomanSingle(chord.substring(0, slashIdx), key)
+    const bassRaw = chordToRomanSingle(chord.substring(slashIdx + 1), key)
+    const bass = bassRaw.match(ROMAN_DEGREE_RE)?.[1] ?? bassRaw
+    return `${main}/${bass}`
+  })
 }
 
 const ROMAN_MAP: Record<string, number> = {
