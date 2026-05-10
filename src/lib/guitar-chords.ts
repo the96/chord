@@ -92,29 +92,36 @@ const NOTE_TO_PC: Record<string, number> = {
 }
 
 /** Adjust positions so the lowest played note matches the slash bass.
- *  Strategy: prefer voicings whose existing bass already matches; otherwise
- *  mute lower strings of each voicing to expose the bass; fall back to the
- *  original positions if neither yields a result. */
+ *  Collects both direct-match voicings and mute-derived voicings (where lower
+ *  strings are silenced to expose the bass), then sorts by baseFret so the
+ *  most accessible voicing comes first. Falls back to the original positions
+ *  if neither approach yields anything. */
 function adjustPositionsForBass(positions: ChordPosition[], bassPc: number): ChordPosition[] {
-  const direct = positions.filter(p => p.midi && p.midi.length > 0 && (p.midi[0] % 12) === bassPc)
-  if (direct.length) return direct
-
-  const muted: ChordPosition[] = []
+  const candidates: ChordPosition[] = []
   for (const pos of positions) {
     if (!pos.midi || pos.midi.length === 0) continue
+    if ((pos.midi[0] % 12) === bassPc) {
+      candidates.push(pos)
+      continue
+    }
     const matchInMidi = pos.midi.findIndex(m => (m % 12) === bassPc)
     if (matchInMidi <= 0) continue
+    const remaining = pos.midi.length - matchInMidi
+    if (remaining < 3) continue
     const playedStrings: number[] = []
     pos.frets.forEach((f, i) => { if (f >= 0) playedStrings.push(i) })
     const stringToKeep = playedStrings[matchInMidi]
     if (stringToKeep == null) continue
-    const remaining = pos.midi.length - matchInMidi
-    if (remaining < 3) continue
-    const newFrets = pos.frets.map((f, i) => (i < stringToKeep ? -1 : f))
-    const newFingers = pos.fingers.map((f, i) => (i < stringToKeep ? 0 : f))
-    muted.push({ ...pos, frets: newFrets, fingers: newFingers, midi: pos.midi.slice(matchInMidi) })
+    candidates.push({
+      ...pos,
+      frets: pos.frets.map((f, i) => (i < stringToKeep ? -1 : f)),
+      fingers: pos.fingers.map((f, i) => (i < stringToKeep ? 0 : f)),
+      midi: pos.midi.slice(matchInMidi),
+    })
   }
-  return muted.length ? muted : positions
+  if (!candidates.length) return positions
+  candidates.sort((a, b) => a.baseFret - b.baseFret || (b.midi?.length ?? 0) - (a.midi?.length ?? 0))
+  return candidates
 }
 
 /** Look up guitar chord data from a chord name like "Cm7", "Dmaj7", etc. */
