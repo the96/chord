@@ -124,6 +124,26 @@ function adjustPositionsForBass(positions: ChordPosition[], bassPc: number): Cho
   return candidates
 }
 
+const ENHARMONIC: Record<string, string> = {
+  'C#': 'Db', 'Db': 'C#', 'D#': 'Eb', 'Eb': 'D#',
+  'F#': 'Gb', 'Gb': 'F#', 'G#': 'Ab', 'Ab': 'G#',
+  'A#': 'Bb', 'Bb': 'A#',
+}
+
+/** Look up a dedicated slash-chord entry in chord-db (e.g. "D" + "/F#"). */
+function lookupSlashEntry(dbKey: string, mainSuffix: string, bassNote: string): ChordData | null {
+  if (mainSuffix !== '' && mainSuffix !== 'm') return null
+  const chords = (guitarDb.chords as Record<string, ChordData[]>)[dbKey]
+  if (!chords) return null
+  const candidates = [bassNote, ENHARMONIC[bassNote]].filter(Boolean) as string[]
+  for (const bass of candidates) {
+    const suffix = `${mainSuffix}/${bass}`
+    const found = chords.find(c => c.suffix === suffix)
+    if (found) return found
+  }
+  return null
+}
+
 /** Look up guitar chord data from a chord name like "Cm7", "Dmaj7", etc. */
 export function lookupChord(chordName: string): ChordData | null {
   const slashIdx = chordName.indexOf('/')
@@ -135,6 +155,14 @@ export function lookupChord(chordName: string): ChordData | null {
 
   const dbKey = NOTE_TO_DB_KEY[parsed.root]
   if (!dbKey) return null
+
+  if (bassNote) {
+    const slashEntry = lookupSlashEntry(dbKey, parsed.suffix, bassNote)
+    if (slashEntry) {
+      const sorted = [...slashEntry.positions].sort((a, b) => a.baseFret - b.baseFret)
+      return { ...slashEntry, positions: sorted }
+    }
+  }
 
   const normalized = normalizeSuffix(parsed.suffix)
   const dbSuffix = SUFFIX_MAP[parsed.suffix] ?? SUFFIX_MAP[normalized]
